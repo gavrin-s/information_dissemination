@@ -473,7 +473,7 @@ class VKApi:
             yield yield_data
 
     def get_posts_by_offset(self, user_id, offset, count, flag, domain):
-        request_data = {'offset': offset, 'count': count, }
+        request_data = {'offset': offset, 'count': count, 'extended': 1}
         if domain:
             request_data['domain'] = user_id
         else:
@@ -484,27 +484,25 @@ class VKApi:
              error=''' + str(resp['error']))
         return resp['response']["count" if flag == "count" else "items"]
 
-    def get_posts(self, user_id, domain=False):
-        text = {"author_text": "", "copy_text": "", "posts_count": 0, "reposts_count": 0}
-        total_posts_count = self.get_posts_by_offset(user_id, 0, 0, "count", domain)
-        text["posts_count"] = total_posts_count
-        posts_count = 0
-        offset = 0
-        posts = None
-        while posts_count < total_posts_count:
-            posts = self.get_posts_by_offset(user_id, offset, 50, "", domain)
-            offset += 50
+    def get_posts(self, user_id, offset=0, count='all', domain=False, extended=1):
+        method = 'wall.get'
+        data = {'owner_id': user_id, 'domain': domain, 'offset': offset, 'count': 100,
+                'extended': extended}
+        if count == 'all':
+            total_posts_count = self.api_request(method, data)['response']['count']
+        else:
+            total_posts_count = count
+
+        posts = []
+        i = 0
+        while True:
+            data['offset'] = i * 100
+            response = self.api_request(method, data)
+            offset += 100
             print('Got {} posts out of {}'.format(offset, total_posts_count))
-            for item in posts:
-                if item["text"]:
-                    text["author_text"] += item["text"]
-                    text["author_text"] += "\n#################################\n"
-                if "copy_history" in item.keys():
-                    text["reposts_count"] = text["reposts_count"] + 1
-                    if item["copy_history"][0]["text"] != "":
-                        text["copy_text"] += item["copy_history"][0]["text"]
-                        text["copy_text"] += "\n###############################\n"
-                posts_count += 1
+            posts.append(response['response']['items'])
+            if not response['response']['items'] and offset >= total_posts_count:
+                break
         return posts
 
     def get_groups_by_id(self, ids):
