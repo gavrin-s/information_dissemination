@@ -308,8 +308,10 @@ class VKApi:
         resp = self.session.post('https://api.vk.com/method/{}'.format(method), data=data)
         time.sleep(0.34)
         if resp.status_code != 200:
-            raise Exception('''Network error while executing {} method,
-             error code: {}'''.format(method, str(resp.status_code)))
+            # raise Exception('''Network error while executing {} method,
+            #  error code: {}'''.format(method, str(resp.status_code)))
+            print('''Network error while executing {} method, error code: {}'''.format(method, str(resp.status_code)))
+            return dict()
         return resp.json()
 
     def _get_25_users_subscriptions(self, ids):
@@ -472,38 +474,48 @@ class VKApi:
             ids_to_aggregate = list(itertools.islice(i, 0, 25))
             yield yield_data
 
-    def get_posts_by_offset(self, user_id, offset, count, flag, domain):
-        request_data = {'offset': offset, 'count': count, 'extended': 1}
-        if domain:
-            request_data['domain'] = user_id
-        else:
-            request_data['owner_id'] = user_id
-        resp = self.api_request('wall.get', request_data)
-        if 'error' in resp:
-            raise Exception('''Error while getting wall posts,
-             error=''' + str(resp['error']))
-        return resp['response']["count" if flag == "count" else "items"]
-
-    def get_posts(self, user_id, offset=0, count='all', domain=False, extended=1):
+    def get_posts(self, user_id, offset=0, n_count=10000, domain=False, extended=1):
         method = 'wall.get'
         data = {'owner_id': user_id, 'domain': domain, 'offset': offset, 'count': 100,
                 'extended': extended}
-        if count == 'all':
-            total_posts_count = self.api_request(method, data)['response']['count']
-        else:
-            total_posts_count = count
 
-        posts = []
-        i = 0
+        if n_count <= 100:
+            data['count'] = n_count
+            response = self.api_request(method, data)
+            return response['response']['items']
+
+        posts_id = []
         while True:
-            data['offset'] = i * 100
+            data['offset'] = offset
             response = self.api_request(method, data)
             offset += 100
-            print('Got {} posts out of {}'.format(offset, total_posts_count))
-            posts.append(response['response']['items'])
-            if not response['response']['items'] and offset >= total_posts_count:
+            print('Got {} posts out of {}'.format(offset, n_count))
+            if not response['response']['items'] or offset >= n_count:
                 break
-        return posts
+            posts_id.extend(response['response']['items'])
+        return posts_id
+
+    def get_reposts(self, user_id, posts):
+        repost_id = []
+        method = 'wall.getReposts'
+        data = {'owner_id': user_id, 'count': 1000}
+        for post in posts:
+            if post['reposts']['count'] > 0:
+                data['post_id'] = post['id']
+                response = self.api_request(method, data)
+                repost_id.extend([profile['id'] for profile in response['response']['profiles']])
+        return repost_id
+
+    def get_likes_of_posts (self, user_id, posts):
+        likes_id = []
+        method = 'likes.getList'
+        data = {'owner_id': user_id, 'count': 1000, 'type': 'post'}
+        for post in posts:
+            if post['likes']['count'] > 0:
+                data['item_id'] = post['id']
+                response = self.api_request(method, data)
+                likes_id.extend([profile for profile in response['response']['items']])
+        return likes_id
 
     def get_groups_by_id(self, ids):
         iter_size = 500
