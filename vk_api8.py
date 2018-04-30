@@ -13,6 +13,18 @@ import urllib.error
 import http.cookiejar
 import requests
 
+user_fields = "photo_id, verified, sex, bdate, city, country," \
+         " home_town, has_photo, photo_50, photo_100, photo_200_orig," \
+         " photo_200, photo_400_orig, photo_max, photo_max_orig, online," \
+         " domain, has_mobile, contacts, site, education, universities, schools," \
+         " status, last_seen, followers_count, common_count, occupation, nickname," \
+         " relatives, relation, personal, connections, exports, wall_comments," \
+         " activities, interests, music, movies, tv, books, games, about, quotes," \
+         " can_post, can_see_all_posts, can_see_audio, can_write_private_message," \
+         " can_send_friend_request, is_favorite, is_hidden_from_feed, timezone," \
+         " screen_name, maiden_name, crop_photo, is_friend, friend_status, career," \
+         " military, blacklisted, blacklisted_by_me"
+
 
 class VKApi:
     def __init__(self, login, password, client, scope='',
@@ -47,69 +59,27 @@ class VKApi:
                     return item["region"]
         return json_response['response']['items'][0]["title"]
 
-    def _get_group_25k_members(self, group_id, fields="", offset=0):
-        code = '''var group = "{}";
-        var i = 0;
-        var count = 25000;
-        var ret = {{}};
-        var data = {{}};
-        while (i < 25 && i*1000 < count)
-        {{
-            data = API.groups.getMembers({{"group_id":group, "count":1000,
-             "offset":i*1000 + {}, "fields":"{}"}});
-            count = data["count"];
-            ret.push(data["items"]);
-            i=i+1;
-        }}
-        return {{"count":count, "items":ret}};'''.format(group_id, offset, fields)
-        resp = self.execute(code)
-        if 'error' in resp:
-            raise Exception('Error while getting group_members, error: ' + str(resp['error']))
-        membs = []
-        for array in resp['response']["items"]:
-            membs.extend(array)
-        return {"count": resp['response']['count'], "items": membs}
+    def get_group_members(self, group_id, count=1000000):
+        max_count = 1000
+        method = 'groups.getMembers'
+        data = {'group_id': group_id, 'count': max_count}
 
-    def get_all_group_members(self, group_id, fields=""):
-        group_id = self.group_url_to_id(group_id)
-        print('Getting ' + str(group_id) + ' members')
-        members = self._get_group_25k_members(group_id, fields)
-        if members['count'] > 25000:
-            for i in range(members['count'] // 25000 - int(members['count'] % 25000 == 0)):
-                print('Getting ' + str(group_id) + ' members ' + 'iteration ' + str(i))
-                members['items'].extend(self._get_group_25k_members(
-                    group_id, fields, (i + 1) * 25000)['items'])
-        return members
+        if count <= max_count:
+            data['count'] = count
+            response = self.api_request(method, data)
+            return response['response']['items']
 
-    def _get_25_groups_members(self, group_ids, fields=""):
-        code = '''var groups = {};
-        var i = 0;
-        var ret = {{}};
-        while (i < 25 && i < groups.length)
-        {{
-            ret.push({{"id":groups[i], "response":API.groups.getMembers(
-            {{["group_id":groups[i], "count":1000, "fields":"{}"}})}});
-            i=i+1;
-        }}
-        return ret;'''.format(str(group_ids).replace('\'', '"'), fields)
-        resp = self.execute(code)
-        if 'error' in resp:
-            raise Exception('Error while getting groups_members, error: ' + str(resp['error']))
-        groups_data = {}
-        for element in resp['response']:
-            groups_data[element['id']] = element['response']
-        for group_id, group_data in groups_data.items():
-            if group_data['count'] > 25000:
-                groups_data[group_id] = self.get_all_group_members(group_id, fields)
-        return groups_data
-
-    def get_groups_members(self, group_ids, fields=""):
-        group_ids = [self.group_url_to_id(group) for group in group_ids]
-        members = self._get_25_groups_members(group_ids[:25], fields)
-        if len(group_ids) > 25:
-            for i in range(len(group_ids) // 25 - int(len(group_ids) % 25 == 0)):
-                members.update(self._get_25_groups_members(group_ids[(i + 1) * 25:(i + 2) * 25], fields))
-        return members
+        members_id = []
+        offset = 0
+        while True:
+            data['offset'] = offset
+            response = self.api_request(method, data)
+            print('Got {} members out of {}'.format(offset, count))
+            if not response['response']['items'] or offset >= count:
+                break
+            members_id.extend(response['response']['items'])
+            offset += max_count
+        return members_id
 
     def get_token(self, email, password, client_id, scope):
         class FormParser(HTMLParser):
@@ -222,46 +192,22 @@ class VKApi:
             print('Banned')
         return ret_ids
 
-    def get_users_data(self, user_ids, fields='', data_format='csv', _opti=250):
-        if (data_format != "csv" and data_format != "xml"):
-            raise Exception('Error while getting users data, wrong format given: {}'.format(data_format))
-        url_xml = '''https://api.vk.com/method/users.get.xml?
-                             user_ids={}&fields={}&access_token={}&v={}'''
-        url = 'https://api.vk.com/method/users.get?user_ids={}&fields={}&access_token={}&v={}'
-        iterations = (len(user_ids) // _opti) + (1 if (len(user_ids) % _opti) else 0)
-        if data_format == 'xml':
-            user_data = "<?xml version='1.0' encoding='utf8'?>\n<users>\n"
-        else:
-            user_data = []
-        for i in range(iterations):
-            print(str(i + 1) + " of " + str(iterations))
-            try:
-                if (len(user_ids) - _opti * i) < _opti:
-                    ids = user_ids[_opti * i:]
-                else:
-                    ids = user_ids[_opti * i:(_opti * (i + 1))]
-            except:
+    def get_users(self, user_ids):
+        max_count = 1000
+        method = 'users.get'
+        data = {'fields': user_fields}
+
+        offset = 0
+        users = []
+        while True:
+            if not user_ids[offset: offset + max_count]:
                 break
-            if data_format == "xml":
-                response = self.session.get(url_xml.format(str(ids), fields,
-                                                           self.token, self.version)).text
-                root = ET.fromstring(response)
-                if root[0].tag == 'error_code':
-                    raise Exception('''Error while getting users data,
-                     error_code={}'''.format(str(root[0].text)))
-                for child in root:
-                    user_data += ET.tostring(child, encoding='utf8', method='xml').decode('utf-8').replace(
-                        "<?xml version='1.0' encoding='utf8'?>", "")
-            else:
-                ids_str = str(ids).replace('[', '').replace(']', '').replace('\'', '').replace(' ', '')
-                response = self.session.get(url.format(str(ids_str), fields,
-                                                       self.token, self.version)).json()
-                if 'error' in response:
-                    raise Exception('''Error while getting users data,
-                     error_code=''' + str(response['error']['error_code']))
-                user_data.extend(response['response'])
-            time.sleep(0.34)
-        return user_data
+            data['user_ids'] = ','.join([str(user_id) for user_id in user_ids[offset: offset + max_count]])
+            response = self.api_request(method, data)
+            print('Got {} users out of {}'.format(offset + max_count, len(user_ids)))
+            users.extend(response['response'])
+            offset += max_count
+        return users
 
     def get_users_sequence_generator(self, from_id, to_id, fields):
         _opti = 300
@@ -475,11 +421,12 @@ class VKApi:
             yield yield_data
 
     def get_posts(self, user_id, offset=0, n_count=10000, domain=False, extended=1):
+        max_count = 100
         method = 'wall.get'
-        data = {'owner_id': user_id, 'domain': domain, 'offset': offset, 'count': 100,
+        data = {'owner_id': user_id, 'domain': domain, 'offset': offset, 'count': max_count,
                 'extended': extended}
 
-        if n_count <= 100:
+        if n_count <= max_count:
             data['count'] = n_count
             response = self.api_request(method, data)
             return response['response']['items']
@@ -488,11 +435,11 @@ class VKApi:
         while True:
             data['offset'] = offset
             response = self.api_request(method, data)
-            offset += 100
             print('Got {} posts out of {}'.format(offset, n_count))
             if not response['response']['items'] or offset >= n_count:
                 break
             posts_id.extend(response['response']['items'])
+            offset += max_count
         return posts_id
 
     def get_reposts(self, user_id, posts):
@@ -624,33 +571,28 @@ class VKApi:
             pass
         return {'count': resp['response']['count'], 'items': subs}
 
-    def get_friends_ids(self, user_id, count=25000):
-        user_id = self.user_url_to_id(user_id)
-        code = '''var user = ''' + str(user_id) + ''';
-        var i = 0;
-        var ret = [];
-        var count = ''' + str(count) + ''';
-        var data = {};
-        while (i*1000 < count)
-        {
-            data = API.friends.get({"user_id":user, "count":1000, "offset":i*1000});
-            count = data["count"];
-            ret.push(data["items"]);
-            i=i+1;
-        }
-        return {"count":count, "items":ret};'''
-        resp = self.execute(code)
-        if 'error' in resp:
-            raise Exception('''Error while getting all friends,
-             error: ''' + str(resp['error']))
-        if resp['response']['count'] is None:
-            return None
-        friends = []
-        for array in resp['response']['items']:
-            friends.extend(array)
-        if 'execute_errors' in resp:
-            pass
-        return {"count": resp['response']['count'], "items": friends}
+    def get_friends(self, user_id, count=10000):
+        max_count = 1000
+        method = 'friends.get'
+        data = {'user_id': user_id, 'count': max_count, 'offset': 0}
+
+        if count <= max_count:
+            data['count'] = count
+            response = self.api_request(method, data)
+            return response['response']['items']
+
+        friends_id = []
+        offset = 0
+        while True:
+            data['offset'] = offset
+            response = self.api_request(method, data)
+            print('Got {} friends out of {}'.format(offset, count))
+            if not response['response']['items'] or offset >= count:
+                break
+            friends_id.extend(response['response']['items'])
+            offset += max_count
+
+        return friends_id
 
     def _get_10k_messages(self, peer_id, date=time.strftime("%d%m%Y"), _offset=0):
         messages = {}
