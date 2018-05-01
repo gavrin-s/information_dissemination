@@ -254,11 +254,12 @@ class VKApi:
         resp = self.session.post('https://api.vk.com/method/{}'.format(method), data=data)
         time.sleep(0.34)
         if resp.status_code != 200:
-            # raise Exception('''Network error while executing {} method,
-            #  error code: {}'''.format(method, str(resp.status_code)))
-            print('''Network error while executing {} method, error code: {}'''.format(method, str(resp.status_code)))
-            return dict()
-        return resp.json()
+            raise Exception('''Network error while executing {} method,
+                error code: {}'''.format(method, str(resp.status_code)))
+        response = resp.json()
+        if 'error' in response:
+            raise Exception('Error: {}'.format(response['error']['error_msg']))
+        return response
 
     def _get_25_users_subscriptions(self, ids):
         code = '''var ids = ''' + str(ids).replace('\'', '"') + ''';
@@ -442,7 +443,7 @@ class VKApi:
             offset += max_count
         return posts_id
 
-    def get_reposts(self, user_id, posts):
+    def get_who_reposted_of_posts(self, user_id, posts):
         repost_id = []
         method = 'wall.getReposts'
         data = {'owner_id': user_id, 'count': 1000}
@@ -453,7 +454,7 @@ class VKApi:
                 repost_id.extend([profile['id'] for profile in response['response']['profiles']])
         return repost_id
 
-    def get_likes_of_posts (self, user_id, posts):
+    def get_who_liked_of_posts(self, user_id, posts):
         likes_id = []
         method = 'likes.getList'
         data = {'owner_id': user_id, 'count': 1000, 'type': 'post'}
@@ -463,6 +464,18 @@ class VKApi:
                 response = self.api_request(method, data)
                 likes_id.extend([profile for profile in response['response']['items']])
         return likes_id
+
+    def get_who_commented_of_posts(self, user_id, posts):
+        comments_id = []
+        method = 'wall.getComments'
+        data = {'owner_id': user_id, 'count': 1000, 'extended': 1}
+        for post in posts:
+            if post['comments']['count'] > 0:
+                data['post_id'] = post['id']
+                response = self.api_request(method, data)
+                comments_id.extend([profile['id'] for profile in response['response']['profiles']])
+        return comments_id
+
 
     def get_groups_by_id(self, ids):
         iter_size = 500
