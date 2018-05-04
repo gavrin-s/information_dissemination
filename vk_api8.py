@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.error
 import http.cookiejar
 import requests
+from tqdm import tqdm
 
 user_fields = "photo_id, verified, sex, bdate, city, country," \
          " home_town, has_photo, photo_50, photo_100, photo_200_orig," \
@@ -24,6 +25,11 @@ user_fields = "photo_id, verified, sex, bdate, city, country," \
          " can_send_friend_request, is_favorite, is_hidden_from_feed, timezone," \
          " screen_name, maiden_name, crop_photo, is_friend, friend_status, career," \
          " military, blacklisted, blacklisted_by_me"
+
+
+class ErrorApi(Exception):
+    def __init__(self, message):
+        self.message = message
 
 
 class VKApi:
@@ -254,11 +260,11 @@ class VKApi:
         resp = self.session.post('https://api.vk.com/method/{}'.format(method), data=data)
         time.sleep(0.34)
         if resp.status_code != 200:
-            raise Exception('''Network error while executing {} method,
+            raise ErrorApi('''Network error while executing {} method,
                 error code: {}'''.format(method, str(resp.status_code)))
         response = resp.json()
         if 'error' in response:
-            raise Exception('Error: {}'.format(response['error']['error_msg']))
+            raise ErrorApi('Error: {}'.format(response['error']['error_msg']))
         return response
 
     def _get_25_users_subscriptions(self, ids):
@@ -436,7 +442,7 @@ class VKApi:
         while True:
             data['offset'] = offset
             response = self.api_request(method, data)
-            print('Got {} posts out of {}'.format(offset, n_count))
+            # print('Got {} posts out of {}'.format(offset, n_count))
             if not response['response']['items'] or offset >= n_count:
                 break
             posts_id.extend(response['response']['items'])
@@ -475,7 +481,6 @@ class VKApi:
                 response = self.api_request(method, data)
                 comments_id.extend([profile['id'] for profile in response['response']['profiles']])
         return comments_id
-
 
     def get_groups_by_id(self, ids):
         iter_size = 500
@@ -599,7 +604,7 @@ class VKApi:
         while True:
             data['offset'] = offset
             response = self.api_request(method, data)
-            print('Got {} friends out of {}'.format(offset, count))
+            # print('Got {} friends out of {}'.format(offset, count))
             if not response['response']['items'] or offset >= count:
                 break
             friends_id.extend(response['response']['items'])
