@@ -4,6 +4,7 @@ from networkx.drawing.nx_agraph import graphviz_layout
 import matplotlib.pyplot as plt
 from vk_api8 import ErrorApi
 from collections import Counter
+import pickle
 
 
 def save_graphml(g, fname):
@@ -46,9 +47,9 @@ def weighted_graph(api, ids, fname=None):
 
     print('Reading info: ')
     for num, id in enumerate(ids):
-        print(id)
-        if num % const == 0:
-            print('Reading {} from {}'.format(num, count_ids))
+        print('-----{}-----'.format(id))
+        #if num % const == 0:
+        #    print('Reading {} from {}'.format(num, count_ids - 1))
         try:
             graph_friends[id] = api.get_friends(id)
             print('got friends')
@@ -65,32 +66,39 @@ def weighted_graph(api, ids, fname=None):
             pass
     print('Info is readed!')
 
+    data = {'ids': ids, 'count_ids': count_ids, 'graph_likes': graph_likes,
+            'graph_friends': graph_friends, 'graph_reposts': graph_reposts,
+            'graph_comments': graph_comments}
+
+    with open('data.pickle', 'wb') as f:
+        pickle.dump(data, f)
+
     print('Creating graph!')
     g = networkx.DiGraph()
     for num, i in enumerate(ids):
         if num % const == 0:
-            print('Creating {} from {}'.format(num, count_ids))
+            print('Creating {} from {}'.format(num, count_ids - 1))
         g.add_node(i)
         # friends
-        for j in graph_friends[i]:
+        for j in graph_friends.get(i, []):
             if i != j and i in ids and j in ids:
                 g.add_edge(i, j, weight=1)
         # reposts
-        for j in graph_reposts[i]:
+        for j in graph_reposts.get(i, []):
             if i != j and i in ids and j in ids:
                 if (i, j) in g.edges:
                     g[i][j]['weight'] += 1
                 else:
                     g.add_edge(i, j, weight=1)
         # comments
-        for j in graph_comments[i]:
+        for j in graph_comments.get(i, []):
             if i != j and i in ids and j in ids:
                 if (i, j) in g.edges:
                     g[i][j]['weight'] += 1
                 else:
                     g.add_edge(i, j, weight=1)
         # likes
-        for j in graph_likes[i]:
+        for j in graph_likes.get(i, []):
             if i != j and i in ids and j in ids:
                 if (i, j) in g.edges:
                     g[i][j]['weight'] += 1

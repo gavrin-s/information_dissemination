@@ -13,6 +13,7 @@ import urllib.error
 import http.cookiejar
 import requests
 from tqdm import tqdm
+import pickle
 
 user_fields = "photo_id, verified, sex, bdate, city, country," \
          " home_town, has_photo, photo_50, photo_100, photo_200_orig," \
@@ -35,8 +36,14 @@ class ErrorApi(Exception):
 class VKApi:
     def __init__(self, login, password, client, scope='',
                  version='5.69', session=requests.Session()):
-        self.token = self.get_token(login, password, client,
-                                    'offline' + (',' if scope != '' else '') + scope)[0]
+        self.login = login
+        self.password = password
+        self.client = client
+        self.scope = 'offline' + (',' if scope != '' else '') + scope
+
+        #self.token = self.get_token(login, password, client,
+        #                            'offline' + (',' if scope != '' else '') + scope)[0]
+        self.token = self.get_token()[0]
         self.version = version
         self.session = session
         self.pp = pprint.PrettyPrinter(depth=3)
@@ -87,7 +94,7 @@ class VKApi:
             offset += max_count
         return members_id
 
-    def get_token(self, email, password, client_id, scope):
+    def get_token(self):
         class FormParser(HTMLParser):
             def __init__(self):
                 HTMLParser.__init__(self)
@@ -164,6 +171,11 @@ class VKApi:
             else:
                 raise NotImplementedError("Method '%s'" % parser.method)
             return response.geturl()
+
+        email = self.login
+        password = self.password
+        client_id = self.client
+        scope = self.scope
 
         if not isinstance(scope, list):
             scope = [scope]
@@ -254,17 +266,31 @@ class VKApi:
     def execute(self, code):
         return self.api_request('execute', {'code': code})
 
-    def api_request(self, method, data):
+    def api_request(self, method, data, repeat=0):
+        if repeat == 1:
+            print('sleeping and changed token')
+            self.token = self.get_token()[0]
+            time.sleep(60)
+
         data['access_token'] = self.token
         data['v'] = self.version
         resp = self.session.post('https://api.vk.com/method/{}'.format(method), data=data)
         time.sleep(0.34)
+
         if resp.status_code != 200:
             raise ErrorApi('''Network error while executing {} method,
                 error code: {}'''.format(method, str(resp.status_code)))
+
         response = resp.json()
         if 'error' in response:
-            raise ErrorApi('Error: {}'.format(response['error']['error_msg']))
+            pickle.dump(response, open('error.pkl', 'wb'))
+            if repeat == 1:
+                raise ErrorApi('Repetition error: {}'.format(response['error']['error_msg']))
+            if response['error']['error_code'] == 9:
+                print('Got fluid control')
+                response = self.api_request(method, data, repeat=1)
+            else:
+                raise ErrorApi('Error: {}'.format(response['error']['error_msg']))
         return response
 
     def _get_25_users_subscriptions(self, ids):
