@@ -15,7 +15,7 @@ import requests
 from tqdm import tqdm
 import pickle
 
-user_fields = "photo_id, verified, sex, bdate, city, country," \
+user_fields = "id, photo_id, verified, sex, bdate, city, country," \
          " home_town, has_photo, photo_50, photo_100, photo_200_orig," \
          " photo_200, photo_400_orig, photo_max, photo_max_orig, online," \
          " domain, has_mobile, contacts, site, education, universities, schools," \

@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from vk_api8 import ErrorApi
 from collections import Counter
 import pickle
+import sys
 
 
 def save_graphml(g, fname):
@@ -38,7 +39,6 @@ def graph_of_friends(api, user_id, fname=None):
 
 
 def weighted_graph(api, ids, fname=None):
-    const = 1
     count_ids = len(ids)
     graph_friends = {}
     graph_likes = {}
@@ -47,20 +47,19 @@ def weighted_graph(api, ids, fname=None):
 
     print('Reading info: ')
     for num, id in enumerate(ids):
+        print('Reading {} from {}.'.format(num, count_ids-1))
         print('-----{}-----'.format(id))
-        #if num % const == 0:
-        #    print('Reading {} from {}'.format(num, count_ids - 1))
         try:
             graph_friends[id] = api.get_friends(id)
-            print('got friends')
+            print('     got friends')
             posts = api.get_posts(id)
-            print('got posts')
+            print('     got posts')
             graph_likes[id] = Counter(api.get_who_liked_of_posts(id, posts))
-            print('got likes')
+            print('     got likes')
             graph_reposts[id] = Counter(api.get_who_reposted_of_posts(id, posts))
-            print('got reposts')
+            print('     got reposts')
             graph_comments[id] = Counter(api.get_who_commented_of_posts(id, posts))
-            print('got comments')
+            print('     got comments')
         except ErrorApi as e:
             print(e)
             pass
@@ -72,7 +71,7 @@ def weighted_graph(api, ids, fname=None):
 
     with open('data.pickle', 'wb') as f:
         pickle.dump(data, f)
-
+    '''
     print('Creating graph!')
     g = networkx.DiGraph()
     for num, i in enumerate(ids):
@@ -106,7 +105,8 @@ def weighted_graph(api, ids, fname=None):
                     g.add_edge(i, j, weight=1)
 
     save_graphml(g, fname)
-    return g
+    '''
+    return data
 
 
 if __name__ == '__main__':
@@ -116,6 +116,9 @@ if __name__ == '__main__':
     scope = "friends,messages,groups"  # OPTIONAL
     version = "5.69"  # Api version OPTIONAL
 
+    # ids = sys.argv[1]
+    ids = [1,2,3]
+
     api = vk_api8.VKApi(login, password, client, scope, version)
 
-    graph_of_friends(api, 155128139, fname='graph.graphml')
+    data = weighted_graph(api, ids)
