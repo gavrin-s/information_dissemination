@@ -2,10 +2,10 @@ import vk_api8
 import networkx
 from networkx.drawing.nx_agraph import graphviz_layout
 import matplotlib.pyplot as plt
-from vk_api8 import ErrorApi
 from collections import Counter
 import pickle
 import sys
+import numpy as np
 
 
 def save_graphml(g, fname):
@@ -60,10 +60,10 @@ def weighted_graph(api, ids, fname=None):
             print('     got reposts')
             graph_comments[id] = Counter(api.get_who_commented_of_posts(id, posts))
             print('     got comments')
-        except ErrorApi as e:
+        except vk_api8.ErrorApi as e:
             print(e)
-            pass
-    print('Info is readed!')
+            break
+    print('Info is red!')
 
     data = {'ids': ids, 'count_ids': count_ids, 'graph_likes': graph_likes,
             'graph_friends': graph_friends, 'graph_reposts': graph_reposts,
@@ -116,9 +116,9 @@ if __name__ == '__main__':
     scope = "friends,messages,groups"  # OPTIONAL
     version = "5.69"  # Api version OPTIONAL
 
-    # ids = sys.argv[1]
-    ids = [1,2,3]
+    begin, end = sys.argv[1], sys.argv[2]
+    ids = np.load('TSU.npy')
 
     api = vk_api8.VKApi(login, password, client, scope, version)
 
-    data = weighted_graph(api, ids)
+    data = weighted_graph(api, ids[begin: end]) # что нужно вернуть

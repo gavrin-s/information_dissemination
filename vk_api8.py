@@ -12,7 +12,6 @@ import urllib.parse
 import urllib.error
 import http.cookiejar
 import requests
-from tqdm import tqdm
 import pickle
 
 user_fields = "id, photo_id, verified, sex, bdate, city, country," \
@@ -29,8 +28,9 @@ user_fields = "id, photo_id, verified, sex, bdate, city, country," \
 
 
 class ErrorApi(Exception):
-    def __init__(self, message):
-        self.message = message
+    def __init__(self, message, code=0):
+        super().__init__(message)
+        self.code = code
 
 
 class VKApi:
@@ -266,12 +266,7 @@ class VKApi:
     def execute(self, code):
         return self.api_request('execute', {'code': code})
 
-    def api_request(self, method, data, repeat=0):
-        if repeat == 1:
-            print('sleeping and changed token')
-            self.token = self.get_token()[0]
-            time.sleep(60)
-
+    def api_request(self, method, data):
         data['access_token'] = self.token
         data['v'] = self.version
         resp = self.session.post('https://api.vk.com/method/{}'.format(method), data=data)
@@ -284,13 +279,7 @@ class VKApi:
         response = resp.json()
         if 'error' in response:
             pickle.dump(response, open('error.pkl', 'wb'))
-            if repeat == 1:
-                raise ErrorApi('Repetition error: {}'.format(response['error']['error_msg']))
-            if response['error']['error_code'] == 9:
-                print('Got fluid control')
-                response = self.api_request(method, data, repeat=1)
-            else:
-                raise ErrorApi('Error: {}'.format(response['error']['error_msg']))
+            raise ErrorApi('Error: {}'.format(response['error']['error_msg']), response['error']['error_code'])
         return response
 
     def _get_25_users_subscriptions(self, ids):
